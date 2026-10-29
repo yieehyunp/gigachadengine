@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>열기관 시뮬레이터 (Heat Engine Simulator)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* slate-900 */
+            color: #f8fafc; /* slate-50 */
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .canvas-container {
+            position: relative;
+            background: #1e293b; /* slate-800 */
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            border: 1px solid #334155; /* slate-700 */
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col p-4 md:p-8">
+
+    <header class="mb-6 text-center md:text-left flex flex-col xl:flex-row justify-between items-center gap-4">
+        <div>
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-orange-400 to-red-500">
+                열기관 및 사이클 시뮬레이터
+            </h1>
+            <p class="text-slate-400 text-sm mt-1">P-V 그래프와 실제 기관의 작동 방식을 실시간으로 관찰하세요.</p>
+        </div>
+        <div class="flex flex-wrap justify-center gap-2">
+            <button id="btnCarnot" class="px-4 py-2 rounded-full text-sm font-semibold transition-all duration-300" onclick="selectEngine('carnot')">
+                카르노 기관
+            </button>
+            <button id="btnOtto" class="px-4 py-2 rounded-full text-sm font-semibold transition-all duration-300" onclick="selectEngine('otto')">
+                오토 (가솔린)
+            </button>
+            <button id="btnStirling" class="px-4 py-2 rounded-full text-sm font-semibold transition-all duration-300" onclick="selectEngine('stirling')">
+                스털링 기관
+            </button>
+            <button id="btnSteam" class="px-4 py-2 rounded-full text-sm font-semibold transition-all duration-300" onclick="selectEngine('steam')">
+                증기 터빈
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 relative">
+        
+        <!-- Controls & Stats Sidebar -->
+        <aside class="lg:col-span-3 flex flex-col gap-4">
+            <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl">
+                <h2 class="text-xl font-semibold mb-4 text-orange-400 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    시뮬레이션 상태
+                </h2>
+                
+                <div class="mb-4">
+                    <label class="block text-xs text-slate-400 mb-1">시뮬레이션 속도</label>
+                    <input type="range" id="speedSlider" min="0.1" max="3" step="0.1" value="1" class="w-full accent-orange-500">
+                </div>
+
+                <div class="space-y-3 pt-4 border-t border-slate-700">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-slate-400">현재 상태</span>
+                        <span id="txtPhase" class="text-sm font-semibold text-blue-300 text-right w-1/2 leading-tight">-</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-slate-400">압력 (P)</span>
+                        <span id="txtP" class="text-sm font-mono font-bold">- atm</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-slate-400">부피 (V)</span>
+                        <span id="txtV" class="text-sm font-mono font-bold">- L</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl flex-1 flex flex-col">
+                <h2 class="text-xl font-semibold mb-4 text-pink-400 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    사이클 결과 (1회전)
+                </h2>
+                <div class="space-y-4">
+                    <div class="bg-slate-900 p-3 rounded-lg border border-slate-700">
+                        <p class="text-xs text-slate-400 mb-1">총 한 일 (W, 빗금친 면적)</p>
+                        <p id="txtWork" class="text-2xl font-bold text-green-400 font-mono">0.00 J</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-900 p-3 rounded-lg border border-slate-700">
+                            <p class="text-xs text-slate-400 mb-1">흡수한 열 (Q_in)</p>
+                            <p id="txtQin" class="text-lg font-bold text-red-400 font-mono">0.00 J</p>
+                        </div>
+                        <div class="bg-slate-900 p-3 rounded-lg border border-slate-700">
+                            <p class="text-xs text-slate-400 mb-1">방출한 열 (Q_out)</p>
+                            <p id="txtQout" class="text-lg font-bold text-blue-400 font-mono">0.00 J</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900 p-3 rounded-lg border border-slate-700">
+                        <p class="text-xs text-slate-400 mb-1">이론 열효율 (W / Q_in)</p>
+                        <p id="txtEff" class="text-2xl font-bold text-pink-400 font-mono">0.0 %</p>
+                    </div>
+                </div>
+                <p id="engineDesc" class="mt-4 text-xs text-slate-400 leading-relaxed flex-1 overflow-y-auto">
+                    <!-- Engine description goes here -->
+                </p>
+            </div>
+        </aside>
+
+        <!-- Engine Visualizer -->
+        <div class="lg:col-span-5 canvas-container flex flex-col h-[400px] lg:h-auto">
+            <div class="absolute top-4 left-4 z-10 bg-black/60 px-3 py-1 rounded-md text-sm font-semibold text-slate-200 backdrop-blur-sm">
+                기관 구조 및 작동
+            </div>
+            <canvas id="engineCanvas"></canvas>
+        </div>
+
+        <!-- PV Graph -->
+        <div class="lg:col-span-4 canvas-container flex flex-col h-[400px] lg:h-auto">
+            <div class="absolute top-4 right-4 z-10 bg-black/60 px-3 py-1 rounded-md text-sm font-semibold text-slate-200 backdrop-blur-sm">
+                압력-부피 (P-V) 그래프
+            </div>
+            <canvas id="graphCanvas"></canvas>
+        </div>
+
+    </main>
+
+    <script>
+        // --- State Management ---
+        let currentEngine = 'carnot';
+        let progressIndex = 0;
+        let path = [];
+        let engineStats = { work: 0, qIn: 0, qOut: 0, eff: 0 };
+        let animationId;
+        
+        // Custom Visual States
+        let turbineAngle = 0;
+        let particles = [];
+        
+        // Scale Settings for P-V Graph
+        const MAX_V = 1.4;
+        const MAX_P = 1.2;
+
+        // UI Elements
+        const speedSlider = document.getElementById('speedSlider');
+        const txtPhase = document.getElementById('txtPhase');
+        const txtP = document.getElementById('txtP');
+        const txtV = document.getElementById('txtV');
+        const txtWork = document.getElementById('txtWork');
+        const txtQin = document.getElementById('txtQin');
+        const txtQout = document.getElementById('txtQout');
+        const txtEff = document.getElementById('txtEff');
+        const engineDesc = document.getElementById('engineDesc');
+
+        // Canvas Setup
+        const engineCtx = document.getElementById('engineCanvas').getContext('2d');
+        const graphCtx = document.getElementById('graphCanvas').getContext('2d');
+
+        function resizeCanvases() {
+            const engineParent = document.getElementById('engineCanvas').parentElement;
+            const graphParent = document.getElementById('graphCanvas').parentElement;
+            
+            document.getElementById('engineCanvas').width = engineParent.clientWidth;
+            document.getElementById('engineCanvas').height = engineParent.clientHeight;
+            
+            document.getElementById('graphCanvas').width = graphParent.clientWidth;
+            document.getElementById('graphCanvas').height = graphParent.clientHeight;
+        }
+
+        window.addEventListener('resize', resizeCanvases);
+
+        // --- Thermodynamics Path Generators ---
+
+        function createCarnotPath() {
+            const p = [];
+            const steps = 40;
+            for(let i=0; i<steps; i++) {
+                let v = 0.3 + (0.6 - 0.3) * (i/steps);
+                p.push({ v: v, p: 1.0 * (0.3/v), phase: '등온 팽창 (열 흡수)', heat: 'in', dir: 1 });
+            }
+            for(let i=0; i<steps; i++) {
+                let v = 0.6 + (1.2 - 0.6) * (i/steps);
+                p.push({ v: v, p: 0.5 * Math.pow(0.6/v, 2), phase: '단열 팽창 (온도 하강)', heat: 'none', dir: 1 });
+            }
+            for(let i=0; i<steps; i++) {
+                let v = 1.2 - (1.2 - 0.6) * (i/steps);
+                p.push({ v: v, p: 0.125 * (1.2/v), phase: '등온 압축 (열 방출)', heat: 'out', dir: -1 });
+            }
+            for(let i=0; i<steps; i++) {
+                let v = 0.6 - (0.6 - 0.3) * (i/steps);
+                p.push({ v: v, p: 0.25 * Math.pow(0.6/v, 2), phase: '단열 압축 (온도 상승)', heat: 'none', dir: -1 });
+            }
+            return p;
+        }
+
+        function createOttoPath() {
+            const p = [];
+            const expSteps = 50;
+            const isoSteps = 15;
+            for(let i=0; i<expSteps; i++) {
+                let v = 0.9 - (0.9 - 0.3) * (i/expSteps);
+                p.push({ v: v, p: 0.1 * Math.pow(0.9/v, 1.4), phase: '단열 압축', heat: 'none', dir: -1 });
+            }
+            for(let i=0; i<isoSteps; i++) {
+                let press = 0.465 + (0.9 - 0.465) * (i/isoSteps);
+                p.push({ v: 0.3, p: press, phase: '등적 가열 (폭발, 열 흡수)', heat: 'in', dir: 0 });
+            }
+            for(let i=0; i<expSteps; i++) {
+                let v = 0.3 + (0.9 - 0.3) * (i/expSteps);
+                p.push({ v: v, p: 0.9 * Math.pow(0.3/v, 1.4), phase: '단열 팽창 (일(W)을 함)', heat: 'none', dir: 1 });
+            }
+            for(let i=0; i<isoSteps; i++) {
+                let press = 0.193 - (0.193 - 0.1) * (i/isoSteps);
+                p.push({ v: 0.9, p: press, phase: '등적 냉각 (배기, 열 방출)', heat: 'out', dir: 0 });
+            }
+            return p;
+        }
+
+        function createStirlingPath() {
+            // Ideal Stirling: Isothermal Exp -> Isochoric Cooling -> Isothermal Comp -> Isochoric Heating
+            const p = [];
+            const steps = 40;
+            // 1(V=0.4, P=1.0) -> 2(V=1.0, P=0.4) -> 3(V=1.0, P=0.15) -> 4(V=0.4, P=0.375)
+            for(let i=0; i<steps; i++) {
+                let v = 0.4 + (1.0 - 0.4) * (i/steps);
+                p.push({ v: v, p: 1.0 * (0.4/v), phase: '등온 팽창 (가열부 열흡수)', heat: 'in', dir: 1 });
+            }
+            for(let i=0; i<steps; i++) {
+                let press = 0.4 - (0.4 - 0.15) * (i/steps);
+                p.push({ v: 1.0, p: press, phase: '등적 냉각 (재생기에 열전달)', heat: 'none', dir: 0 });
+            }
+            for(let i=0; i<steps; i++) {
+                let v = 1.0 - (1.0 - 0.4) * (i/steps);
+                p.push({ v: v, p: 0.15 * (1.0/v), phase: '등온 압축 (냉각부 열방출)', heat: 'out', dir: -1 });
+            }
+            for(let i=0; i<steps; i++) {
+                let press = 0.375 + (1.0 - 0.375) * (i/steps);
+                p.push({ v: 0.4, p: press, phase: '등적 가열 (재생기에서 열흡수)', heat: 'none', dir: 0 });
+            }
+            return p;
+        }
+
+        function createSteamPath() {
+            // Rankine Cycle (Approximated for P-V)
+            // 1(Pump: 0.1, 0.2->1.1) -> 2(Boiler: 0.1->0.8, 1.1) -> 3(Turbine: 0.8->1.2, 1.1->0.2) -> 4(Condenser: 1.2->0.1, 0.2)
+            const p = [];
+            const pumpSteps = 20;
+            const heatSteps = 50;
+            const expSteps = 40;
+            const coolSteps = 50;
+            
+            for(let i=0; i<pumpSteps; i++) {
+                let press = 0.2 + (1.1 - 0.2) * (i/pumpSteps);
+                p.push({ v: 0.1, p: press, phase: '펌프 (액체 압축)', heat: 'none', dir: 0 });
+            }
+            for(let i=0; i<heatSteps; i++) {
+                let v = 0.1 + (0.8 - 0.1) * (i/heatSteps);
+                p.push({ v: v, p: 1.1, phase: '보일러 (등압 가열/기화)', heat: 'in', dir: 1 });
+            }
+            for(let i=0; i<expSteps; i++) {
+                let v = 0.8 + (1.2 - 0.8) * (i/expSteps);
+                // roughly adiabatic curve
+                let press = 1.1 * Math.pow(0.8/v, 3.5); 
+                p.push({ v: v, p: press, phase: '터빈 (단열 팽창, 발전)', heat: 'none', dir: 1 });
+            }
+            for(let i=0; i<coolSteps; i++) {
+                let v = 1.2 - (1.2 - 0.1) * (i/coolSteps);
+                // Ensure ends exactly at 0.2
+                let press = p[p.length-1].p - (p[p.length-1].p - 0.2) * (i/coolSteps);
+                p.push({ v: v, p: 0.2, phase: '복수기 (등압 냉각/액화)', heat: 'out', dir: -1 });
+            }
+            return p;
+        }
+
+        function calculateStats(pathData) {
+            let work = 0;
+            for(let i=0; i<pathData.length-1; i++) {
+                work += ((pathData[i+1].p + pathData[i].p) / 2) * (pathData[i+1].v - pathData[i].v);
+            }
+            work += ((pathData[0].p + pathData[pathData.length-1].p) / 2) * (pathData[0].v - pathData[pathData.length-1].v);
+            
+            let qIn = 0;
+            if (currentEngine === 'carnot') qIn = Math.abs(work) / 0.5;
+            else if (currentEngine === 'otto') qIn = Math.abs(work) / 0.35;
+            else if (currentEngine === 'stirling') qIn = Math.abs(work) / 0.45;
+            else if (currentEngine === 'steam') qIn = Math.abs(work) / 0.30; // Rankine efficiency ~30%
+            
+            let qOut = qIn - Math.abs(work);
+
+            return {
+                work: Math.abs(work) * 1000,
+                qIn: qIn * 1000,
+                qOut: qOut * 1000,
+                eff: (Math.abs(work) / qIn) * 100
+            };
+        }
+
+        // --- Interaction & UI ---
+        function updateButtons(activeId) {
+            const btns = ['btnCarnot', 'btnOtto', 'btnStirling', 'btnSteam'];
+            btns.forEach(id => {
+                const btn = document.getElementById(id);
+                if (id === activeId) {
+                    btn.className = "px-4 py-2 rounded-full text-sm font-semibold transition-all duration-300 bg-blue-600 shadow-lg shadow-blue-500/30 ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900";
+                } else {
+                    btn.className = "px-4 py-2 rounded-full text-sm font-semibold transition-all duration-300 bg-slate-700 hover:bg-slate-600 text-slate-200";
+                }
+            });
+        }
+
+        function selectEngine(type) {
+            currentEngine = type;
+            progressIndex = 0;
+            particles = []; // Reset particles
+            
+            if (type === 'carnot') {
+                updateButtons('btnCarnot');
+                path = createCarnotPath();
+                engineDesc.innerHTML = "<strong>카르노 기관 (이상 기체)</strong><br>가장 이상적인 가역 열기관입니다. 실린더가 뜨거운 열원과 차가운 열원에 번갈아 접촉하며 팽창과 압축을 반복합니다. 현실에 존재하지 않지만 모든 열기관의 이론적 최대 효율 기준이 됩니다.";
+            } else if (type === 'otto') {
+                updateButtons('btnOtto');
+                path = createOttoPath();
+                engineDesc.innerHTML = "<strong>오토 기관 (가솔린 엔진)</strong><br>자동차에 널리 쓰이는 4행정(흡입-압축-폭발-배기) 내연기관의 기본 모델입니다. 피스톤이 연료 혼합기를 단열 압축한 뒤 스파크 플러그로 폭발(등적 가열)시켜 강한 힘(일)을 얻습니다.";
+            } else if (type === 'stirling') {
+                updateButtons('btnStirling');
+                path = createStirlingPath();
+                engineDesc.innerHTML = "<strong>스털링 기관 (알파형)</strong><br>외부에서 열을 가하는 외연기관입니다. 고온부(빨간색)와 저온부(파란색) 실린더의 피스톤이 약 90도의 위상차를 두고 움직이며 내부 밀폐된 기체를 팽창, 수축시켜 동력을 만듭니다. 조용하고 다양한 열원을 쓸 수 있습니다.";
+            } else if (type === 'steam') {
+                updateButtons('btnSteam');
+                path = createSteamPath();
+                engineDesc.innerHTML = "<strong>증기 터빈 (랭킨 사이클)</strong><br>화력 및 원자력 발전소의 기본 원리입니다. 펌프가 물을 압축해 보일러로 보내고, 보일러에서 끓어오른 고압의 증기가 터빈 날개를 고속으로 회전(팽창)시키며 전기를 만듭니다. 이후 복수기에서 다시 물로 냉각됩니다.";
+            }
+
+            engineStats = calculateStats(path);
+            txtWork.innerText = engineStats.work.toFixed(1) + " J";
+            txtQin.innerText = engineStats.qIn.toFixed(1) + " J";
+            txtQout.innerText = engineStats.qOut.toFixed(1) + " J";
+            txtEff.innerText = engineStats.eff.toFixed(1) + " %";
+        }
+
+        // --- Drawing Helper ---
+        function map(val, inMin, inMax, outMin, outMax) {
+            return (val - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
+        }
+
+        // --- Drawing P-V Graph ---
+        function drawGraph(ctx, state) {
+            const w = ctx.canvas.width;
+            const h = ctx.canvas.height;
+            const margin = 50;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Grid
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for(let i=0; i<=5; i++) {
+                let y = map(i/5 * MAX_P, 0, MAX_P, h-margin, margin);
+                ctx.moveTo(margin, y); ctx.lineTo(w-margin, y);
+                let x = map(i/5 * MAX_V, 0, MAX_V, margin, w-margin);
+                ctx.moveTo(x, h-margin); ctx.lineTo(x, margin);
+            }
+            ctx.stroke();
+
+            // Axes
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(margin, margin); ctx.lineTo(margin, h-margin);
+            ctx.lineTo(w-margin, h-margin);
+            ctx.stroke();
+
+            // Labels
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '12px Inter';
+            ctx.textAlign = 'center';
+            ctx.fillText('Volume (V)', w/2, h - 15);
+            ctx.save();
+            ctx.translate(20, h/2);
+            ctx.rotate(-Math.PI/2);
+            ctx.fillText('Pressure (P)', 0, 0);
+            ctx.restore();
+
+            // Loop Area
+            ctx.beginPath();
+            path.forEach((pt, i) => {
+                let x = map(pt.v, 0, MAX_V, margin, w-margin);
+                let y = map(pt.p, 0, MAX_P, h-margin, margin);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.15)'; // Emerald tint
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.stroke();
+
+            // Active Path
+            ctx.beginPath();
+            ctx.strokeStyle = '#10b981'; // Emerald 500
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            for(let i=0; i<=progressIndex; i++) {
+                let x = map(path[i].v, 0, MAX_V, margin, w-margin);
+                let y = map(path[i].p, 0, MAX_P, h-margin, margin);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Current Dot
+            let cx = map(state.v, 0, MAX_V, margin, w-margin);
+            let cy = map(state.p, 0, MAX_P, h-margin, margin);
+            ctx.beginPath();
+            ctx.arc(cx, cy, 8, 0, Math.PI*2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#10b981';
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+
+        // --- Drawing Engine Visuals ---
+        
+        function drawStandardPiston(ctx, state, w, h) {
+            const cx = w / 2;
+            const cy = h / 2 - 40;
+            const cylWidth = 120;
+            const cylHeight = 180;
+            const pistonHeight = 30;
+            
+            let v_min = 0.3, v_max = 1.2;
+            let pistonY = cy - cylHeight/2 + map(state.v, v_min, v_max, 20, cylHeight - 20);
+
+            // T color
+            let T = state.p * state.v;
+            let t_norm = Math.max(0, Math.min(1, map(T, 0.09, 0.3, 0, 1)));
+            let hue = 240 * (1 - t_norm);
+            let gasColor = `hsla(${hue}, 90%, 60%, 0.7)`;
+
+            // Gas
+            ctx.fillStyle = gasColor;
+            ctx.fillRect(cx - cylWidth/2, pistonY, cylWidth, (cy + cylHeight/2) - pistonY);
+
+            // Heat Sources
+            if (state.heat === 'in') {
+                if (currentEngine === 'carnot') {
+                    ctx.fillStyle = 'rgba(255, 60, 0, 0.8)';
+                    ctx.beginPath();
+                    ctx.moveTo(cx - 40, cy + cylHeight/2 + 5);
+                    ctx.lineTo(cx, cy + cylHeight/2 - 15 + Math.random()*15); 
+                    ctx.lineTo(cx + 40, cy + cylHeight/2 + 5);
+                    ctx.fill();
+                    ctx.fillStyle = '#ff6b00';
+                    ctx.font = '16px Inter'; ctx.textAlign = 'center';
+                    ctx.fillText('열 공급 (Q in)', cx, cy + cylHeight/2 + 35);
+                } else if (currentEngine === 'otto') {
+                    ctx.shadowBlur = 20; ctx.shadowColor = '#fff';
+                    ctx.fillStyle = '#fbbf24'; 
+                    ctx.beginPath();
+                    ctx.arc(cx, pistonY + 10, 15 + Math.random()*10, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    ctx.fillText('폭발 (Spark!)', cx + 90, pistonY + 15);
+                }
+            } else if (state.heat === 'out') {
+                ctx.fillStyle = 'rgba(0, 150, 255, 0.5)';
+                for(let i=0; i<3; i++) {
+                    ctx.fillRect(cx - 50 + i*40, cy + cylHeight/2 + 5, 20, 15);
+                }
+                ctx.fillStyle = '#38bdf8';
+                ctx.font = '16px Inter'; ctx.textAlign = 'center';
+                ctx.fillText('열 방출 (Q out)', cx, cy + cylHeight/2 + 40);
+            }
+
+            // Cylinder
+            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(cx - cylWidth/2, cy - cylHeight/2); ctx.lineTo(cx - cylWidth/2, cy + cylHeight/2);
+            ctx.lineTo(cx + cylWidth/2, cy + cylHeight/2); ctx.lineTo(cx + cylWidth/2, cy - cylHeight/2);
+            ctx.stroke();
+
+            // Piston
+            ctx.fillStyle = '#cbd5e1';
+            ctx.fillRect(cx - cylWidth/2 + 3, pistonY - pistonHeight, cylWidth - 6, pistonHeight);
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 2;
+            ctx.strokeRect(cx - cylWidth/2 + 3, pistonY - pistonHeight, cylWidth - 6, pistonHeight);
+
+            // Crankshaft
+            const crankCenterY = cy - cylHeight/2 - 90; 
+            const crankRadius = 40;
+            let v_norm = (state.v - v_min) / (v_max - v_min);
+            v_norm = Math.max(0, Math.min(1, v_norm));
+            let angle = (state.dir === 1) ? Math.acos(1 - 2 * v_norm) : ((state.dir === -1) ? 2*Math.PI - Math.acos(1 - 2 * v_norm) : (v_norm < 0.5 ? 0 : Math.PI));
+
+            let pinX = cx + crankRadius * Math.sin(angle);
+            let pinY = crankCenterY + crankRadius * Math.cos(angle);
+
+            ctx.beginPath(); ctx.arc(cx, crankCenterY, crankRadius + 10, 0, Math.PI*2);
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 8; ctx.stroke();
+            
+            ctx.beginPath(); ctx.arc(pinX, pinY, 6, 0, Math.PI*2);
+            ctx.fillStyle = '#ef4444'; ctx.fill();
+
+            ctx.beginPath(); ctx.moveTo(cx, pistonY - pistonHeight); ctx.lineTo(pinX, pinY);
+            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 6; ctx.stroke();
+            
+            ctx.fillStyle = '#334155';
+            ctx.beginPath(); ctx.arc(cx, pistonY - pistonHeight, 4, 0, Math.PI*2); ctx.fill();
+        }
+
+        function drawStirlingEngine(ctx, state, w, h) {
+            // Alpha Type Stirling Engine: Two cylinders with 90 degree phase difference
+            const cycleProgress = progressIndex / path.length;
+            const crankAngle = cycleProgress * Math.PI * 2;
+            
+            const hotAngle = crankAngle;
+            const coldAngle = crankAngle - Math.PI/2; // Cold lags by 90 deg
+
+            const cx = w / 2;
+            const cy = h / 2 + 20;
+            const cylW = 60;
+            const cylH = 120;
+            const stroke = 40; // Amplitude of piston
+
+            const hotX = cx - 70;
+            const coldX = cx + 70;
+
+            const hotPistonY = cy - stroke * Math.cos(hotAngle);
+            const coldPistonY = cy - stroke * Math.cos(coldAngle);
+
+            // Gas color based on phase
+            let hotGasColor = 'rgba(239, 68, 68, 0.7)'; // Red
+            let coldGasColor = 'rgba(59, 130, 246, 0.7)'; // Blue
+            let pipeColor = 'rgba(168, 85, 247, 0.5)'; // Purple mix
+
+            // Draw Pipes connecting bottoms
+            ctx.fillStyle = pipeColor;
+            ctx.fillRect(hotX, cy + cylH/2 - 20, coldX - hotX, 20);
+
+            // Hot Cylinder (Left)
+            ctx.fillStyle = hotGasColor;
+            ctx.fillRect(hotX - cylW/2, hotPistonY, cylW, (cy + cylH/2) - hotPistonY);
+            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 4;
+            ctx.strokeRect(hotX - cylW/2, cy - cylH/2, cylW, cylH);
+            
+            // Fire under hot cylinder
+            ctx.fillStyle = 'rgba(255, 100, 0, 0.8)';
+            ctx.beginPath();
+            ctx.moveTo(hotX - 20, cy + cylH/2 + 5);
+            ctx.lineTo(hotX, cy + cylH/2 + 25 + Math.random()*10);
+            ctx.lineTo(hotX + 20, cy + cylH/2 + 5);
+            ctx.fill();
+
+            // Cold Cylinder (Right)
+            ctx.fillStyle = coldGasColor;
+            ctx.fillRect(coldX - cylW/2, coldPistonY, cylW, (cy + cylH/2) - coldPistonY);
+            ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 4;
+            ctx.strokeRect(coldX - cylW/2, cy - cylH/2, cylW, cylH);
+
+            // Cooling fins on cold cylinder
+            ctx.fillStyle = '#60a5fa';
+            for(let i=0; i<4; i++) {
+                ctx.fillRect(coldX + cylW/2, cy - 20 + i*15, 15, 4);
+                ctx.fillRect(coldX - cylW/2 - 15, cy - 20 + i*15, 15, 4);
+            }
+
+            // Pistons
+            ctx.fillStyle = '#cbd5e1';
+            ctx.fillRect(hotX - cylW/2 + 2, hotPistonY - 20, cylW - 4, 20);
+            ctx.fillRect(coldX - cylW/2 + 2, coldPistonY - 20, cylW - 4, 20);
+
+            // Crankshaft in middle top
+            const crankCY = cy - cylH/2 - 60;
+            ctx.beginPath(); ctx.arc(cx, crankCY, 30, 0, Math.PI*2);
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 4; ctx.stroke();
+
+            // Crank Pins
+            const hotPinX = cx + 30 * Math.sin(hotAngle);
+            const hotPinY = crankCY + 30 * Math.cos(hotAngle);
+            const coldPinX = cx + 30 * Math.sin(coldAngle);
+            const coldPinY = crankCY + 30 * Math.cos(coldAngle);
+
+            // Rods
+            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.moveTo(hotX, hotPistonY - 20); ctx.lineTo(hotPinX, hotPinY); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(coldX, coldPistonY - 20); ctx.lineTo(coldPinX, coldPinY); ctx.stroke();
+
+            // Labels
+            ctx.fillStyle = '#f8fafc'; ctx.font = '14px Inter'; ctx.textAlign = 'center';
+            ctx.fillText('고온부', hotX, cy + cylH/2 + 50);
+            ctx.fillText('저온부', coldX, cy + cylH/2 + 50);
+        }
+
+        function drawSteamTurbine(ctx, state, w, h) {
+            const speed = parseFloat(speedSlider.value);
+            
+            // Turbine rotation speed depends on phase. Fast during expansion (turbine)
+            let rotSpeed = 0.05 * speed;
+            if(state.phase.includes('터빈')) rotSpeed = 0.2 * speed;
+            turbineAngle += rotSpeed;
+
+            const cx = w / 2;
+            const cy = h / 2;
+            
+            // Positions: Boiler(Left), Turbine(Top), Condenser(Right), Pump(Bottom)
+            const bX = cx - 120, bY = cy + 50;
+            const tX = cx, tY = cy - 80;
+            const cX = cx + 120, cY = cy + 50;
+            const pX = cx, pY = cy + 120;
+
+            // Pipes connecting them
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 12; ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(bX, bY); ctx.lineTo(bX, tY); ctx.lineTo(tX, tY); // Boiler to Turbine
+            ctx.lineTo(cX, tY); ctx.lineTo(cX, cY); // Turbine to Condenser
+            ctx.lineTo(cX, pY); ctx.lineTo(pX, pY); // Condenser to Pump
+            ctx.lineTo(bX, pY); ctx.lineTo(bX, bY); // Pump to Boiler
+            ctx.stroke();
+
+            // Inner pipe color based on phase
+            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 6;
+            ctx.beginPath(); ctx.moveTo(bX, bY); ctx.lineTo(bX, tY); ctx.lineTo(tX, tY); ctx.stroke(); // Steam (Hot)
+            ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 6;
+            ctx.beginPath(); ctx.moveTo(cX, tY); ctx.lineTo(cX, pY); ctx.lineTo(bX, pY); ctx.stroke(); // Water (Cold)
+
+            // Boiler (Red Box)
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(bX - 40, bY - 40, 80, 80);
+            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 4; ctx.strokeRect(bX - 40, bY - 40, 80, 80);
+            // Fire
+            ctx.fillStyle = 'rgba(255, 60, 0, 0.8)';
+            ctx.beginPath(); ctx.moveTo(bX-20, bY+40); ctx.lineTo(bX, bY+40-20*Math.random()); ctx.lineTo(bX+20, bY+40); ctx.fill();
+            // Water in boiler
+            ctx.fillStyle = '#38bdf8'; ctx.fillRect(bX - 36, bY, 72, 36);
+            if(state.heat === 'in') { // Boiling bubbles
+                ctx.fillStyle = '#fff';
+                for(let i=0; i<5; i++) {
+                    ctx.beginPath(); ctx.arc(bX - 25 + Math.random()*50, bY + Math.random()*30, 3, 0, Math.PI*2); ctx.fill();
+                }
+            }
+            ctx.fillStyle = '#fff'; ctx.font = '14px Inter'; ctx.textAlign = 'center'; ctx.fillText('보일러', bX, bY - 50);
+
+            // Turbine (Circle with blades)
+            ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.arc(tX, tY, 40, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 4; ctx.stroke();
+            // Blades
+            ctx.save();
+            ctx.translate(tX, tY);
+            ctx.rotate(turbineAngle);
+            ctx.fillStyle = '#94a3b8';
+            for(let i=0; i<6; i++) {
+                ctx.fillRect(5, -4, 30, 8);
+                ctx.rotate(Math.PI / 3);
+            }
+            ctx.restore();
+            // Center pin
+            ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(tX, tY, 6, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.fillText('터빈 (발전)', tX, tY - 50);
+
+            // Condenser (Blue Box)
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(cX - 40, cY - 40, 80, 80);
+            ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 4; ctx.strokeRect(cX - 40, cY - 40, 80, 80);
+            // Cooling coils
+            ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(cX-30, cY-20); ctx.lineTo(cX+30, cY-10); ctx.lineTo(cX-30, cY); ctx.lineTo(cX+30, cY+10); ctx.lineTo(cX-30, cY+20); ctx.stroke();
+            if(state.heat === 'out') {
+                ctx.fillStyle = 'rgba(59, 130, 246, 0.5)'; ctx.fillRect(cX - 40, cY + 40, 80, 20); // water dripping effect
+            }
+            ctx.fillStyle = '#fff'; ctx.fillText('복수기 (냉각)', cX, cY - 50);
+
+            // Pump (Small circle)
+            ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.arc(pX, pY, 20, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 3; ctx.stroke();
+            ctx.fillStyle = '#fff'; ctx.font = '12px Inter'; ctx.fillText('펌프', pX, pY + 35);
+            if(state.phase.includes('펌프')) { // Active pump
+                ctx.fillStyle = '#10b981'; ctx.beginPath(); ctx.arc(pX, pY, 8, 0, Math.PI*2); ctx.fill();
+            }
+        }
+
+        function drawEngineVisual(ctx, state) {
+            const w = ctx.canvas.width;
+            const h = ctx.canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            if (currentEngine === 'carnot' || currentEngine === 'otto') {
+                drawStandardPiston(ctx, state, w, h);
+            } else if (currentEngine === 'stirling') {
+                drawStirlingEngine(ctx, state, w, h);
+            } else if (currentEngine === 'steam') {
+                drawSteamTurbine(ctx, state, w, h);
+            }
+        }
+
+        function updateUI(state) {
+            txtPhase.innerText = state.phase;
+            if(state.heat === 'in') txtPhase.className = "text-sm font-semibold text-red-400 text-right w-1/2 leading-tight";
+            else if(state.heat === 'out') txtPhase.className = "text-sm font-semibold text-blue-400 text-right w-1/2 leading-tight";
+            else txtPhase.className = "text-sm font-semibold text-slate-300 text-right w-1/2 leading-tight";
+
+            txtP.innerText = state.p.toFixed(2) + " atm";
+            txtV.innerText = state.v.toFixed(2) + " L";
+        }
+
+        // --- Main Animation Loop ---
+        function loop() {
+            if (!path || path.length === 0) {
+                animationId = requestAnimationFrame(loop);
+                return;
+            }
+
+            let currentState = path[progressIndex];
+            
+            drawGraph(graphCtx, currentState);
+            drawEngineVisual(engineCtx, currentState);
+            updateUI(currentState);
+
+            let speed = parseFloat(speedSlider.value);
+            window.animationCounter = (window.animationCounter || 0) + speed;
+            if (window.animationCounter >= 1) {
+                progressIndex += Math.floor(window.animationCounter);
+                window.animationCounter -= Math.floor(window.animationCounter);
+            }
+            
+            if (progressIndex >= path.length) {
+                progressIndex = 0;
+            }
+            
+            animationId = requestAnimationFrame(loop);
+        }
+
+        // Initialization
+        window.onload = () => {
+            resizeCanvases();
+            selectEngine('carnot');
+            loop(); // Start global animation loop
+        };
+
+    </script>
+</body>
+</html>
